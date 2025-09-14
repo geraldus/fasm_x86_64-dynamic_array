@@ -59,6 +59,12 @@ label _start
     mov rsi, 0x401
     call arr_append
 
+    ; a[1] := 1337
+    mov rdi, [rbp-24]
+    mov rsi, 1
+    mov rdx, 29
+    call arr_set
+
     ; a[] := ...          //        , 4
     mov rdi, [rbp-24]
     mov rsi, 1993
@@ -68,6 +74,12 @@ label _start
     mov rdi, [rbp-24]
     mov rsi, 2025
     call arr_append
+
+    ; a[2] := 1337
+    mov rdi, [rbp-24]
+    mov rsi, 2
+    mov rdx, 1337
+    call arr_set
 
     ; a[] := ...          //        , 6
     mov rdi, [rbp-24]
