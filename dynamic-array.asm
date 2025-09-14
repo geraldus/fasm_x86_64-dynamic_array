@@ -46,12 +46,25 @@ label _start
     call arr_append
 
     ; print the pointer obtained from `malloc`
+    lea rdi, [rbp-24]
     call print_arr_info
 
     ; a[] := 1025 (0x401) // realloc, 3
     lea rdi, [rbp-24]
     mov rsi, 0x401
     call arr_append
+
+    ;-----------------------------------------------------------------
+
+    ; initialize 2nd array
+    mov rdi, DEFAULT_ARR_CAP
+    call arr_alloc
+    mov qword [rbp-24*1-8],  DEFAULT_ARR_CAP ; array.capacity
+    mov qword [rbp-24*1-16], 0               ; array.len
+    mov qword [rbp-24*1-24], rax             ; array.data*
+                                             ; TODO: handle errors
+
+    ;-----------------------------------------------------------------
 
     ; a[1] := 1337
     lea rdi, [rbp-24]
@@ -65,12 +78,29 @@ label _start
     call arr_append
 
     ; print the pointer obtained from `malloc`
+    lea rdi, [rbp-24]
     call print_arr_info
 
     ; a[] := ...          // realloc, 5
     lea rdi, [rbp-24]
     mov rsi, 2025
     call arr_append
+
+    ;-----------------------------------------------------------------;
+
+    lea rdi, [rbp-24*1-24]
+    mov rsi, 2023
+    call arr_append
+
+    lea rdi, [rbp-24*1-24]
+    mov rsi, 3033
+    call arr_append
+
+    lea rdi, [rbp-24*1-24]
+    mov rsi, 1111
+    call arr_append
+
+    ;-----------------------------------------------------------------;
 
     ; a[2] := 1337
     lea rdi, [rbp-24]
@@ -84,9 +114,12 @@ label _start
     call arr_append
 
     ; print the pointer obtained from `malloc`
+    lea rdi, [rbp-24]
     call print_arr_info
 
-    ; print a[2]
+    ;-----------------------------------------------------------------
+
+    ; print a[]
     lea rdi, [rbp-24]
     mov rsi, 0
     call print_arr_elem
@@ -108,8 +141,25 @@ label _start
 
     call divider ;----------------------------------------------------
 
+    ; print b[]
+    lea rdi, [rbp-24*1-24]
+    mov rsi, 0
+    call print_arr_elem
+    lea rdi, [rbp-24*1-24]
+    mov rsi, 1
+    call print_arr_elem
+    lea rdi, [rbp-24*1-24]
+    mov rsi, 2
+    call print_arr_elem
+
+    call divider ;----------------------------------------------------;
+
     ; free a[]
     lea rdi, [rbp-24]      ; rsi = a pointer from `arr_alloc` call
+    call arr_free
+
+    ; free b[]
+    lea rdi, [rbp-24*1-24]      ; rsi = a pointer from `arr_alloc` call
     call arr_free
 
     ; stack recover
@@ -182,9 +232,8 @@ label arr_append
 
     call arr_grow_if_needed
 
-    ; rcx := array.ptr
+    ; rcx := array address
     mov rcx, [rsp]
-    mov rcx, [rcx]
     ; new_last_index (rsi) := array.size
     mov rsi, [rcx+8]
     ; array.size += 1
@@ -208,7 +257,7 @@ label arr_grow_if_needed
 
     xor rax,rax
     mov rcx, [rdi+8] ; arr.len
-    cmp rcx,[rdi+16] ; arr.len == arr.app ?
+    cmp rcx,[rdi+16] ; arr.len == arr.cap ?
     je _inline_arr_realloc
     xor rax,rax
     ret
@@ -228,6 +277,7 @@ label arr_grow_if_needed
     ; arr_addr -> stack
     push rdi
     ; arg0 (rdi) = rdi
+    mov rdi, [rdi]
     ; arg1 (rsi) = array.capacity (doubled)
     call [realloc]
     pop rdi
@@ -239,10 +289,18 @@ label arr_grow_if_needed
     mov rax, 1
     ret
 
+;=====================================================================;
+
 label print_arr_info
+    ; arg0 (rdi): memory address holding pointer to the array structure
+    push rdi
+
     call divider ;----------------------------------------------------
+    mov rdi, [rsp]
     call print_arr_ptr
+    mov rdi, [rsp]
     call print_arr_len
+    pop rdi
     call print_arr_cap
     call divider ;----------------------------------------------------
     ret
@@ -258,7 +316,6 @@ label print_arr_ptr
 
 label print_arr_len
     ; arg0 (rdi): memory address holding pointer to the array structure
-
     mov rdi, [rdi+8]
     mov rsi, c_fmt_arr_len
     call print_fmt_int
@@ -287,8 +344,6 @@ label print_arr_elem
     mov ELEM_TYPE rdx, [r11]
     call print_fmt_int_2
     ret
-
-;=====================================================================;
 
 label print_int_n
     ; arg0 (rdi): in value
