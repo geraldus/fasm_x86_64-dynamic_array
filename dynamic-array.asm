@@ -352,22 +352,20 @@ label print_n
 
 segment readable writeable
 
-exit_msg db 'Done.',0xa
-exit_msg_size = $-exit_msg
+exit_msg		 db 'Done.',0xa
+exit_msg_size            =  $-exit_msg
 
-c_exit_msg db 'Done.',0xa,0
+c_exit_msg		 db 'Done.',0xa,0
 
-c_fmt_int db '%llu',0
+c_fmt_int		 db '%llu',0
+c_fmt_int_n		 db '%llu',0xa,0
 
-c_fmt_hex_int_n db '0x%x',0xa,0
-c_fmt_int_n db '%llu',0xa,0
+c_fmt_hex_int_n		 db '0x%x',0xa,0
+c_fmt_hex_dec_int_n	 db '0x%x (%llu)',0xa,0
 
-c_fmt_hex_dec_int_n db '0x%x (%llu)',0xa,0
-c_fmt_n db 0xa,0
+c_fmt_arr_elem_val	 db 'array[%llu] = %llu',0xa,0
+c_fmt_arr_ptr		 db  '*int array = *0x%x (%lu)',0xa,0
+c_fmt_arr_addr		 db '  eff addr = *0x%x (%lu)',0xa,0
 
-c_fmt_arr_elem_val db 'array[%llu] = %llu',0xa,0
-
-c_fmt_arr_ptr db  '*int array = *0x%x (%lu)',0xa,0
-c_fmt_arr_addr db '  eff addr = *0x%x (%lu)',0xa,0
-
-c_fmt_divider db '----------------------------------------------------------------',0xa,0
+c_fmt_n			 db 0xa,0
+c_fmt_divider		 db '----------------------------------------------------------------',0xa,0
