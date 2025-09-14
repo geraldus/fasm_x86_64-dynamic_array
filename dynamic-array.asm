@@ -20,9 +20,10 @@ label _start
     mov rbp, rsp
 
     ; reserve local variables area
-    sub rsp, 24
+    define ARR_SIZE 24
+    sub rsp, ARR_SIZE*2
 
-    ; initialize array
+    ; initialize 1st array
     mov rdi, 0       ; initial cap; 0 means use default
     call arr_alloc
     mov qword [rbp-8],  DEFAULT_ARR_CAP ; array.capacity
@@ -31,15 +32,16 @@ label _start
                                         ; TODO: handle errors
 
     ; print the pointer obtained from `malloc`
+    lea rdi, [rbp-24]
     call print_arr_ptr
 
     ; a[] := ...          //        , 1
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 13
     call arr_append
 
     ; a[] := ...          //        , 2
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 26
     call arr_append
 
@@ -47,18 +49,18 @@ label _start
     call print_arr_info
 
     ; a[] := 1025 (0x401) // realloc, 3
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 0x401
     call arr_append
 
     ; a[1] := 1337
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 1
     mov rdx, 29
     call arr_set
 
     ; a[] := ...          //        , 4
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 1993
     call arr_append
 
@@ -66,18 +68,18 @@ label _start
     call print_arr_info
 
     ; a[] := ...          // realloc, 5
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 2025
     call arr_append
 
     ; a[2] := 1337
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 2
     mov rdx, 1337
     call arr_set
 
     ; a[] := ...          //        , 6
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 956421
     call arr_append
 
@@ -85,29 +87,29 @@ label _start
     call print_arr_info
 
     ; print a[2]
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 0
     call print_arr_elem
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 1
     call print_arr_elem
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 2
     call print_arr_elem
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 3
     call print_arr_elem
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 4
     call print_arr_elem
-    mov rdi, [rbp-24]
+    lea rdi, [rbp-24]
     mov rsi, 5
     call print_arr_elem
 
     call divider ;----------------------------------------------------
 
     ; free a[]
-    mov rdi, [rbp-24]      ; rsi = a pointer from `arr_alloc` call
+    lea rdi, [rbp-24]      ; rsi = a pointer from `arr_alloc` call
     call arr_free
 
     ; stack recover
@@ -123,7 +125,8 @@ label _start
 ;=====================================================================;
 
 label arr_alloc
-    ; arg_0: initial capacity
+    ; arg0 (rdi): initial capacity
+
     cmp rdi, 0
     mov r11, DEFAULT_ARR_CAP*ELEM_SIZE_BYTES
     cmove rdi, r11
@@ -131,13 +134,15 @@ label arr_alloc
     ret
 
 label arr_free
-    ; arg_0: ptr returned from `malloc`
-    ; mov rdi, rdi ; keep rdi as is
+    ; arg0 (rdi): memory address holding pointer to the array structure
+
+    ; arg0 (rdi) := (void*) array.ptr
+    mov rdi, [rdi]
     call [free]
     ret
 
 label arr_calc_elem_addr
-    ; arg0 (rdi): a pointer to the array memory from the `malloc`
+    ; arg0 (rdi): memory address holding pointer to the array structure
     ; arg1 (rsi): index
 
     ; offset (rax) := index * ELEM_SIZE_BYTES
@@ -145,14 +150,14 @@ label arr_calc_elem_addr
     mov ELEM_TYPE rcx, ELEM_SIZE_BYTES
     mul rcx
 
-    ; addr (rcx) := load an effective address of array memory
-    lea rcx, [rdi]
+    ; addr (rcx) := (void*) array.ptr
+    mov rcx, [rdi]
     ; ret elem_addr (rax) := addr + offset
     add rax, rcx ; = elem addr
     ret
 
 label arr_set
-    ; arg0 (rdi): a pointer to the array memory from the `malloc`
+    ; arg0 (rdi): memory address holding pointer to the array structure
     ; arg1 (rsi): element_index
     ; arg2 (rdx): 64-bit int value
 
@@ -167,68 +172,71 @@ label arr_set
     ret
 
 label arr_append
-    ; arg0 (rdi): ptr to array memory from `malloc`
+    ; arg0 (rdi): memory address holding pointer to the array structure
     ; arg1 (rsi): int64 value
 
     ; value (rsp+8) := value;
     push rsi
-    ; old_ptr (rsp) := array.data* (old ptr)
+    ; arr_addr (rsp) := the address of an array
     push rdi
 
     call arr_grow_if_needed
 
+    ; rcx := array.ptr
+    mov rcx, [rsp]
+    mov rcx, [rcx]
     ; new_last_index (rsi) := array.size
-    mov rsi, [rbp-16]
+    mov rsi, [rcx+8]
     ; array.size += 1
-    add qword [rbp-16],1
+    add qword [rcx+8],1
 
-    ; arg0, arr* (rdi) := *array
-    mov rdi, [rbp-24]
+    ; arg0, array_addr (rdi) := arr_addr (rsp)
+    mov rdi, [rsp]
     ; arg1, index (rsi) := new_last_index (rsi)
     ; arg2, val (rdx) := value (rsp+8)
     mov rdx, [rsp+8]
     call arr_set
 
-    ; rax := old_ptr
+    ; rax := arr_addr
     pop rax
-    ; flags := old_ptr == array.data
-    cmp rax,[rbp-24]
-    ; rewrite (rsp) value -> (bool) old_ptr == array.data
-    mov qword [rsp],0
-    setne [rsp]
     pop rax
     ret
 
 label arr_grow_if_needed
-    ; arg0 (rdi): ptr to array memory from `malloc`
-    ; ret (rax): bool, 1 if realloc happened
+    ; arg0 (rdi): memory address holding pointer to the array structure
+    ; ret (rax): bool, 1 if realloc happened, 0 otherwise
 
     xor rax,rax
-    mov rcx, [rbp-16]
-    cmp rcx,[rbp-8]
+    mov rcx, [rdi+8] ; arr.len
+    cmp rcx,[rdi+16] ; arr.len == arr.app ?
     je _inline_arr_realloc
+    xor rax,rax
     ret
 
   label _inline_arr_realloc
-    ; (rdi): ptr to array memory from `malloc`
+    ; (rdi): memory address holding pointer to the array structure
+    ; ret (rax): bool, always returns 1 (true)
 
     ; rax := array.capacity
-    mov rax, [rbp-8]
+    mov rax, [rdi+16]
     ; new_cap (rax) = array.cap*2
     mov rcx, 2
     mul rcx
-    ; new_cap -> stack
+    ; new_cap  -> stack
     push rax
 
+    ; arr_addr -> stack
+    push rdi
     ; arg0 (rdi) = rdi
     ; arg1 (rsi) = array.capacity (doubled)
     call [realloc]
+    pop rdi
     ; array.data := new array pointer
-    mov [rbp-24], rax
+    mov [rdi], rax
 
     ; array.capacity := new_cap
-    pop qword [rbp-8]
-
+    pop qword [rdi+16]
+    mov rax, 1
     ret
 
 label print_arr_info
@@ -240,27 +248,33 @@ label print_arr_info
     ret
 
 label print_arr_ptr
+    ; arg0 (rdi): memory address holding pointer to the array structure
+
+    mov rsi, [rdi]
+    mov rdx, [rdi]
     mov rdi, c_fmt_arr_ptr
-    mov rsi, [rbp-24]
-    mov rdx, [rbp-24]
     call print_fmt_int_2
     ret
 
 label print_arr_len
-    mov rdi, [rbp-16]
+    ; arg0 (rdi): memory address holding pointer to the array structure
+
+    mov rdi, [rdi+8]
     mov rsi, c_fmt_arr_len
     call print_fmt_int
     ret
 
 label print_arr_cap
-    mov rdi, [rbp-8]
+    ; arg0 (rdi): memory address holding pointer to the array structure
+
+    mov rdi, [rdi+16]
     mov rsi, c_fmt_arr_cap
     call print_fmt_int
     ret
 
 label print_arr_elem
-    ; arg0 (rdi) = a pointer to the array memory from the `malloc`
-    ; arg1 (rsi) = index
+    ; arg0 (rdi): memory address holding pointer to the array structure
+    ; arg1 (rsi): index
 
     ; addr (r11) := convert an index to the address of the element
     call arr_calc_elem_addr
