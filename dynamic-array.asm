@@ -5,78 +5,118 @@ entry _start
 include 'import64.inc'
 interpreter '/lib64/ld-linux-x86-64.so.2'
 needed 'libc.so.6'
-import printf, malloc, free
+import printf, malloc, realloc, free
+
+define ELEM_TYPE qword
+define ELEM_SIZE_BYTES 8
+define DEFAULT_ARR_CAP 2
 
 segment readable executable
 
 label _start
 
+    ; setup stack
+    push qword rbp
+    mov rbp, rsp
+
+    ; reserve local variables area
+    sub rsp, 24
+
     ; initialize array
     mov rdi, 0       ; initial cap; 0 means use default
     call arr_alloc
-    push qword rax   ; save the pointer to the allocated memory
-                     ; TODO: handle errors
+    mov qword [rbp-8],  DEFAULT_ARR_CAP ; array.capacity
+    mov qword [rbp-16], 0               ; array.len
+    mov qword [rbp-24], rax             ; array.data*
+                                        ; TODO: handle errors
 
     ; print the pointer obtained from `malloc`
     mov rdi, c_fmt_arr_ptr
-    mov rsi, [rsp]
-    mov rdx, [rsp]
+    mov rsi, [rbp-24]
+    mov rdx, [rbp-24]
     call print_fmt_int_2
 
-    lea rdi, [rsp]
+    lea rdi, [rbp-24]
     mov rsi, rdi
     mov rdx, rdi
     mov rdi, c_fmt_arr_addr
     call print_fmt_int_2
 
-    call divider
+    call divider ;----------------------------------------------------
+
+    ; a[] := 13
+    mov rdi, [rbp-24]
+    mov rsi, 13
+    call arr_append
+
+    ; print a[0]
+    mov rdi, [rbp-24]
+    mov rsi, 0
+    call print_arr_elem
+
+    ; a[] := 26
+    mov rdi, [rbp-24]
+    mov rsi, 26
+    call arr_append
+
+    ; print a[1]
+    mov rdi, [rbp-24]
+    mov rsi, 1
+    call print_arr_elem
+
+    ; a[] := 26
+    mov rdi, [rbp-24]
+    mov rsi, 0x401
+    call arr_append
+
+    ; print a[2]
+    mov rdi, [rbp-24]
+    mov rsi, 2
+    call print_arr_elem
+
+    call divider ;----------------------------------------------------
 
     ; direct write 64-bit int at [0]
-    ; lea rdi, [rsp] ; address of memory (no offset)
+    ; lea rdi, [rbp-24] ; address of memory (no offset)
     ; mov qword [rdi], 0x13 ; value
 
-    mov rdi, rsp
-    mov rsi, 0
-    mov rdx, 13
-    call arr_set
+    ; ; a[0] := 13
+    ; mov rdi, rsp
+    ; mov rsi, 0
+    ; mov rdx, 13
+    ; call arr_set
 
-    lea rdi, [rsp]
-    mov rdi, [rdi]
-    call print_hex_dec_int_n
+    ; ; manual print of the 0 element value
+    ; lea rdi, [rbp-24]
+    ; mov rdi, [rdi]
+    ; call print_hex_dec_int_n
 
-    lea rdi, [rsp]
-    mov rsi, 0
-    call print_arr_elem
+    ; ; print a[0]
+    ; mov rdi, rsp
+    ; mov rsi, 0
+    ; call print_arr_elem
 
-    call divider
+    ; ; a[1] := 26
+    ; mov rdi, rsp
+    ; mov rsi, 1
+    ; mov rdx, 26
+    ; call arr_set
 
-    mov rdi, rsp
-    mov rsi, 1
-    mov rdx, 26
-    call arr_set
+    ; ; print a[1]
+    ; mov rdi, rsp
+    ; mov rsi, 1
+    ; call print_arr_elem
 
-    lea rdi, [rsp]
-    mov rsi, 1
-    call print_arr_elem
 
-    call divider
+    call divider ;----------------------------------------------------
 
-    mov rdi, rsp
-    mov rsi, 2
-    mov rdx, 52
-    call arr_set
-
-    lea rdi, [rsp]
-    mov rsi, 2
-    call print_arr_elem
-
-    call divider
-
-    mov rdi, r8      ; rsi = a pointer from `arr_alloc` call
+    ; free a[]
+    mov rdi, [rbp-24]      ; rsi = a pointer from `arr_alloc` call
     call arr_free
 
-    ; stack reset
-    sub rsp, 8
+    ; stack recover
+    mov rsp, rbp
+    mov rbp, rsp
 
     mov rdi, c_exit_msg
     call print_str
@@ -85,10 +125,6 @@ label _start
     syscall
 
 ;=====================================================================;
-
-define ELEM_TYPE qword
-define ELEM_SIZE_BYTES 8
-define DEFAULT_ARR_CAP 2
 
 label arr_alloc
     ; arg_0: initial capacity
@@ -104,8 +140,23 @@ label arr_free
     call [free]
     ret
 
+label arr_calc_elem_addr
+    ; arg0 (rdi): a pointer to the array memory from the `malloc`
+    ; arg1 (rsi): index
+
+    ; offset (rax) := index * ELEM_SIZE_BYTES
+    mov rax, rsi
+    mov ELEM_TYPE rcx, ELEM_SIZE_BYTES
+    mul rcx
+
+    ; addr (rcx) := load an effective address of array memory
+    lea rcx, [rdi]
+    ; ret elem_addr (rax) := addr + offset
+    add rax, rcx ; = elem addr
+    ret
+
 label arr_set
-    ; arg0 (rdi): effective address of ptr from `malloc`
+    ; arg0 (rdi): a pointer to the array memory from the `malloc`
     ; arg1 (rsi): element_index
     ; arg2 (rdx): 64-bit int value
 
@@ -115,38 +166,77 @@ label arr_set
     ; addr (rax) := calc effective address of element by its index
     call arr_calc_elem_addr
     ; write value at the calculated location
+
     mov ELEM_TYPE [rax], r10
     ret
 
-label arr_set_by_ptr
-    ; arg0 (rdi): ptr from `malloc`
-    ; arg1 (rsi): element_index
-    ; arg2 (rdx): 64-bit int value
+label arr_append
+    ; arg0 (rdi): ptr to array memory from `malloc`
+    ; arg1 (rsi): int64 value
 
-    ; addr (rax) := calc ptr to an element by its index
-    mov rax, ELEM_SIZE_BYTES
-    mul rsi
-    add rax, rdi
-    ; write value at the calculated location
-    mov rax, rdx
+    ; rdx := value;
+    mov rdx, rsi
+
+    ; r11 := array.data* (old ptr)
+    mov r11, rdi
+
+    ; have_room := (rax) := size < cap?
+    call arr_check_realloc
+
+    ; new_last_index (rsi) := array.size
+    mov rsi, [rbp-16]
+
+    ; array.size += 1
+    add qword [rbp-16],1
+
+    ; arg1, index (rsi) := rsi
+    ; arg0, arr* (rdi) := r11
+    mov rdi, r11
+    ; arg2, val (rxd) := rdx
+    call arr_set
+
+    mov rax, r11
+    cmp rax,[rbp-24]
+    push 0
+    setne [rsp]
+    pop rax
     ret
 
+label arr_check_realloc
+    ; arg0 (rdi): ptr to array memory from `malloc`
+    ; ret (rax): bool, 1 if realloc happened
 
-label arr_calc_elem_addr
-    ; arg0 (rdi): effective address of memory (array)
-    ; arg1 (rsi): index
-
-    ; addr (rax) := (index + 1) * ELEM_SIZE_BYTES
-    mov rax, rsi
-    mov ELEM_TYPE rcx, ELEM_SIZE_BYTES
+    xor rax,rax
+    mov rcx, [rbp-16]
+    cmp rcx,[rbp-8]
+    je arr_realloc
+    ret
+  label arr_realloc
+    ; rax := array.capacity
+    mov rax, [rbp-8]
+    ; new_cap (rax) = array.cap*2
+    mov rcx, 2
     mul rcx
+    ; new_cap -> stack
+    push rax
 
-    ; ret addr (rax)
-    add rax, rdi ; = elem addr
+    ; arg0 (rdi) = rdi
+    ; arg1 (rsi) = array.capacity (doubled)
+    mov rcx, rdi
+    mov rdi, [rcx]
+    call [realloc]
+    ; array.capacity := new_cap
+    pop qword [rbp-8]
+    ; rcx := new array pointer
+    mov [rbp-24], rax
+
+    ; free old mem
+    call [free]
+    mov rax, rcx
     ret
 
 label print_arr_elem
-    ; arg0 (rdi) = effective address of array
+    ; arg0 (rdi) = a pointer to the array memory from the `malloc`
     ; arg1 (rsi) = index
 
     ; addr (r11) := convert an index to the address of the element
