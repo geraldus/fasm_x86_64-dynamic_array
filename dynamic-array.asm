@@ -31,18 +31,7 @@ label _start
                                         ; TODO: handle errors
 
     ; print the pointer obtained from `malloc`
-    mov rdi, c_fmt_arr_ptr
-    mov rsi, [rbp-24]
-    mov rdx, [rbp-24]
-    call print_fmt_int_2
-
-    lea rdi, [rbp-24]
-    mov rsi, rdi
-    mov rdx, rdi
-    mov rdi, c_fmt_arr_addr
-    call print_fmt_int_2
-
-    call divider ;----------------------------------------------------
+    call print_arr_ptr
 
     ; a[] := ...          //        , 1
     mov rdi, [rbp-24]
@@ -53,6 +42,9 @@ label _start
     mov rdi, [rbp-24]
     mov rsi, 26
     call arr_append
+
+    ; print the pointer obtained from `malloc`
+    call print_arr_info
 
     ; a[] := 1025 (0x401) // realloc, 3
     mov rdi, [rbp-24]
@@ -70,6 +62,9 @@ label _start
     mov rsi, 1993
     call arr_append
 
+    ; print the pointer obtained from `malloc`
+    call print_arr_info
+
     ; a[] := ...          // realloc, 5
     mov rdi, [rbp-24]
     mov rsi, 2025
@@ -85,6 +80,9 @@ label _start
     mov rdi, [rbp-24]
     mov rsi, 956421
     call arr_append
+
+    ; print the pointer obtained from `malloc`
+    call print_arr_info
 
     ; print a[2]
     mov rdi, [rbp-24]
@@ -233,6 +231,33 @@ label arr_grow_if_needed
 
     ret
 
+label print_arr_info
+    call divider ;----------------------------------------------------
+    call print_arr_ptr
+    call print_arr_len
+    call print_arr_cap
+    call divider ;----------------------------------------------------
+    ret
+
+label print_arr_ptr
+    mov rdi, c_fmt_arr_ptr
+    mov rsi, [rbp-24]
+    mov rdx, [rbp-24]
+    call print_fmt_int_2
+    ret
+
+label print_arr_len
+    mov rdi, [rbp-16]
+    mov rsi, c_fmt_arr_len
+    call print_fmt_int
+    ret
+
+label print_arr_cap
+    mov rdi, [rbp-8]
+    mov rsi, c_fmt_arr_cap
+    call print_fmt_int
+    ret
+
 label print_arr_elem
     ; arg0 (rdi) = a pointer to the array memory from the `malloc`
     ; arg1 (rsi) = index
@@ -364,6 +389,8 @@ c_fmt_hex_dec_int_n	 db '0x%x (%llu)',0xa,0
 c_fmt_arr_elem_val	 db 'array[%llu] = %llu',0xa,0
 c_fmt_arr_ptr		 db  '*int array = *0x%x (%lu)',0xa,0
 c_fmt_arr_addr		 db '  eff addr = *0x%x (%lu)',0xa,0
+c_fmt_arr_cap		 db 'array.cap = %lu',0xa,0
+c_fmt_arr_len		 db 'array.len = %lu',0xa,0
 
 c_fmt_n			 db 0xa,0
 c_fmt_divider		 db '----------------------------------------------------------------',0xa,0
