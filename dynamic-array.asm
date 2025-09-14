@@ -44,69 +44,55 @@ label _start
 
     call divider ;----------------------------------------------------
 
-    ; a[] := 13
+    ; a[] := ...          //        , 1
     mov rdi, [rbp-24]
     mov rsi, 13
     call arr_append
 
-    ; print a[0]
-    mov rdi, [rbp-24]
-    mov rsi, 0
-    call print_arr_elem
-
-    ; a[] := 26
+    ; a[] := ...          //        , 2
     mov rdi, [rbp-24]
     mov rsi, 26
     call arr_append
 
-    ; print a[1]
-    mov rdi, [rbp-24]
-    mov rsi, 1
-    call print_arr_elem
-
-    ; a[] := 26
+    ; a[] := 1025 (0x401) // realloc, 3
     mov rdi, [rbp-24]
     mov rsi, 0x401
     call arr_append
 
+    ; a[] := ...          //        , 4
+    mov rdi, [rbp-24]
+    mov rsi, 1993
+    call arr_append
+
+    ; a[] := ...          // realloc, 5
+    mov rdi, [rbp-24]
+    mov rsi, 2025
+    call arr_append
+
+    ; a[] := ...          //        , 6
+    mov rdi, [rbp-24]
+    mov rsi, 956421
+    call arr_append
+
     ; print a[2]
+    mov rdi, [rbp-24]
+    mov rsi, 0
+    call print_arr_elem
+    mov rdi, [rbp-24]
+    mov rsi, 1
+    call print_arr_elem
     mov rdi, [rbp-24]
     mov rsi, 2
     call print_arr_elem
-
-    call divider ;----------------------------------------------------
-
-    ; direct write 64-bit int at [0]
-    ; lea rdi, [rbp-24] ; address of memory (no offset)
-    ; mov qword [rdi], 0x13 ; value
-
-    ; ; a[0] := 13
-    ; mov rdi, rsp
-    ; mov rsi, 0
-    ; mov rdx, 13
-    ; call arr_set
-
-    ; ; manual print of the 0 element value
-    ; lea rdi, [rbp-24]
-    ; mov rdi, [rdi]
-    ; call print_hex_dec_int_n
-
-    ; ; print a[0]
-    ; mov rdi, rsp
-    ; mov rsi, 0
-    ; call print_arr_elem
-
-    ; ; a[1] := 26
-    ; mov rdi, rsp
-    ; mov rsi, 1
-    ; mov rdx, 26
-    ; call arr_set
-
-    ; ; print a[1]
-    ; mov rdi, rsp
-    ; mov rsi, 1
-    ; call print_arr_elem
-
+    mov rdi, [rbp-24]
+    mov rsi, 3
+    call print_arr_elem
+    mov rdi, [rbp-24]
+    mov rsi, 4
+    call print_arr_elem
+    mov rdi, [rbp-24]
+    mov rsi, 5
+    call print_arr_elem
 
     call divider ;----------------------------------------------------
 
@@ -160,58 +146,62 @@ label arr_set
     ; arg1 (rsi): element_index
     ; arg2 (rdx): 64-bit int value
 
-    ; r10 := value (rdx is volatile)
-    mov r10, rdx
+    ; value (rsp):= value (rdx is volatile)
+    push rdx
 
     ; addr (rax) := calc effective address of element by its index
     call arr_calc_elem_addr
-    ; write value at the calculated location
 
-    mov ELEM_TYPE [rax], r10
+    ; write value at the calculated location
+    pop ELEM_TYPE [rax]
     ret
 
 label arr_append
     ; arg0 (rdi): ptr to array memory from `malloc`
     ; arg1 (rsi): int64 value
 
-    ; rdx := value;
-    mov rdx, rsi
+    ; value (rsp+8) := value;
+    push rsi
+    ; old_ptr (rsp) := array.data* (old ptr)
+    push rdi
 
-    ; r11 := array.data* (old ptr)
-    mov r11, rdi
-
-    ; have_room := (rax) := size < cap?
-    call arr_check_realloc
+    call arr_grow_if_needed
 
     ; new_last_index (rsi) := array.size
     mov rsi, [rbp-16]
-
     ; array.size += 1
     add qword [rbp-16],1
 
-    ; arg1, index (rsi) := rsi
-    ; arg0, arr* (rdi) := r11
-    mov rdi, r11
-    ; arg2, val (rxd) := rdx
+    ; arg0, arr* (rdi) := *array
+    mov rdi, [rbp-24]
+    ; arg1, index (rsi) := new_last_index (rsi)
+    ; arg2, val (rdx) := value (rsp+8)
+    mov rdx, [rsp+8]
     call arr_set
 
-    mov rax, r11
+    ; rax := old_ptr
+    pop rax
+    ; flags := old_ptr == array.data
     cmp rax,[rbp-24]
-    push 0
+    ; rewrite (rsp) value -> (bool) old_ptr == array.data
+    mov qword [rsp],0
     setne [rsp]
     pop rax
     ret
 
-label arr_check_realloc
+label arr_grow_if_needed
     ; arg0 (rdi): ptr to array memory from `malloc`
     ; ret (rax): bool, 1 if realloc happened
 
     xor rax,rax
     mov rcx, [rbp-16]
     cmp rcx,[rbp-8]
-    je arr_realloc
+    je _inline_arr_realloc
     ret
-  label arr_realloc
+
+  label _inline_arr_realloc
+    ; (rdi): ptr to array memory from `malloc`
+
     ; rax := array.capacity
     mov rax, [rbp-8]
     ; new_cap (rax) = array.cap*2
@@ -222,17 +212,13 @@ label arr_check_realloc
 
     ; arg0 (rdi) = rdi
     ; arg1 (rsi) = array.capacity (doubled)
-    mov rcx, rdi
-    mov rdi, [rcx]
     call [realloc]
-    ; array.capacity := new_cap
-    pop qword [rbp-8]
-    ; rcx := new array pointer
+    ; array.data := new array pointer
     mov [rbp-24], rax
 
-    ; free old mem
-    call [free]
-    mov rax, rcx
+    ; array.capacity := new_cap
+    pop qword [rbp-8]
+
     ret
 
 label print_arr_elem
